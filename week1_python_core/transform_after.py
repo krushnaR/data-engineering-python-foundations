@@ -10,15 +10,20 @@ def aggregate_claims(df):
 
     df = df.withColumn("claim_month", f.concat(df.claim_year,f.lit("-"),f.lpad(df.claim_mnth,2,"0")))
 
-    df = df.groupBy(df.member_id,df.claim_month).agg(f.count('claim_id').alias('claim_count'),f.sum('claim_amount').alias('total_claim_amount'))
+    df = df.groupBy(df.member_id,df.claim_month).agg(f.count('claim_id').alias('claim_count'),f.sum('claim_amount').alias('total_claim_amount')).drop("claim_year","claim_mnth")
 
+    return df
+
+def get_high_cost_members(df):
     df_5_percent = df.groupBy(df.member_id).agg(f.sum('total_claim_amount').alias('claim_amount_member'))
 
-    df_5_percent = df_5_percent.orderBy(f.desc("claim_amount_member"))
+    threshold = df_5_percent.agg(
+        f.expr("percentile_approx(claim_amount_member, 0.95)")
+    ).collect()[0][0]
 
-    total_members = df_5_percent.count()
-    top_5_percent = math.ceil(total_members * 0.05)
+    df_5_percent = df_5_percent.filter(
+        f.col("claim_amount_member") >= threshold
+    ).withColumn("high_cost_flag", f.lit(1))
 
-    df_5_percent = df_5_percent.limit(top_5_percent)
-
-    return df, df_5_percent
+    df = df.join(df_5_percent,on="member_id",how="left").fillna(0, subset=["high_cost_flag"]).drop("claim_amount_member")
+    return df

@@ -1,6 +1,8 @@
 from data_generation import load_data
 from transformations import clean_claim_dates, remove_negative_claims
-from transform_after import aggregate_claims
+from transform_after import aggregate_claims, get_high_cost_members
+from load import save_data
+from quality_checks import check_row_count, check_negative_claims, check_member_id_null
 
 print("Loading claims data..")
 df = load_data(spark)
@@ -16,9 +18,22 @@ df,errored_data_neg = remove_negative_claims(df)
 print(f"{errored_data_neg.count()} records found with negative claim amount")
 print(f"Records after removing negative claim records : {df.count()}")
 
-agg_claims, df_5_percent = aggregate_claims(df)
+agg_claims = aggregate_claims(df)
+high_cost_members = get_high_cost_members(agg_claims)
 
-agg_claims.display(10)
-df_5_percent.display(10)
+print("running quality checks on final dataset before loading..")
+c_row_count = check_row_count(high_cost_members)
+c_negative_claims = check_negative_claims(high_cost_members)
+c_member_id_null = check_member_id_null(high_cost_members)
+
+#Load the data only if all the checks passed.
+if c_row_count and c_negative_claims and c_member_id_null:
+    print("Loading high cost members")
+    save_data(high_cost_members,"high_cost_members")
+else:
+    print("Quality check failed. Data not loaded.")
+
+#agg_claims.display(10)
+high_cost_members.display(10)
 #errored_data_dates.display(10)
 #errored_data_neg.display(10)
