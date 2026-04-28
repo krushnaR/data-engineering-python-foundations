@@ -1,7 +1,7 @@
 from data_generation import load_data
 from transformations import clean_claim_dates, remove_negative_claims
 from transform_after import aggregate_claims, get_high_cost_members
-from load import save_data
+from load import save_data, save_incremental_data
 from quality_checks import check_row_count, check_negative_claims, check_member_id_null
 import config as c
 from app_logging import log_info, log_error
@@ -11,24 +11,21 @@ start_time = time.time()
 
 #error handling
 try:
-    log_info("Loading claims data..")
+    log_info("Extracting claims data..")
     df = load_data(spark)
 
-    log_info("Data Loaded Successfully!")
-    log_info(f"Total number of rows (Raw Data) : {df.count()}")
-
     df,errored_data_dates = clean_claim_dates(df)
-    log_error(f"{errored_data_dates.count()} records found with bad dates/format")
-    log_info(f"Records after removing bad date records : {df.count()}")
 
     df,errored_data_neg = remove_negative_claims(df)
-    log_error(f"{errored_data_neg.count()} records found with negative claim amount")
-    log_info(f"Records after removing negative claim records : {df.count()}")
 
     save_data(errored_data_dates,"errored_data_dates")
     save_data(errored_data_neg,"errored_data_neg")
 
     agg_claims = aggregate_claims(df)
+    save_data(agg_claims,"claims_agg")
+
+    save_incremental_data(spark,df,"claims_inc","CLAIMS")
+    
     high_cost_members = get_high_cost_members(agg_claims)
 
     log_info("running quality checks on final dataset before loading..")
